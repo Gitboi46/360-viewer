@@ -84,7 +84,7 @@ const panoramas = [
   {
     url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama3_Configuration1_BJP.jpg",
     forward: 1,
-    backward: 7,         
+    backward: 7,
     hasVideo: true
   },
   {
@@ -119,9 +119,9 @@ const panoramas = [
   },
   {
     url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama9.png",
-    forward: 0,     
+    forward: 0,
     backward: 6
-  }   
+  }
 ];
 
 let scene, camera, renderer, sphere;
@@ -131,6 +131,7 @@ let isDragging = false;
 let isTransitioning = false;
 let videoMesh = null;
 let videoElement = null;
+let hasUserInteracted = false;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -158,6 +159,21 @@ function init() {
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(devicePixelRatio);
   document.body.appendChild(renderer.domElement);
+
+  // One-time user gesture detection for iOS video playback
+  function onFirstInteraction() {
+    if (hasUserInteracted) return;
+    hasUserInteracted = true;
+    if (videoElement && videoElement.paused) {
+      videoElement.play().catch(e => {
+        console.warn("Play after gesture failed:", e);
+      });
+    }
+  }
+
+  renderer.domElement.addEventListener('touchstart', onFirstInteraction, { once: true, passive: true });
+  renderer.domElement.addEventListener('click', onFirstInteraction, { once: true });
+  renderer.domElement.addEventListener('pointerdown', onFirstInteraction, { once: true });
 
   loadPanorama(0);
 
@@ -194,30 +210,28 @@ function loadPanorama(index) {
 
 function addVideoBanner() {
   videoElement = document.createElement("video");
-  videoElement.src = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Sakshi%20Intro%20Blue%20Screen.mp4";
   videoElement.crossOrigin = "anonymous";
-  videoElement.loop = true;
+  videoElement.src = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Sakshi%20Intro%20Blue%20Screen.mp4";
   videoElement.muted = true;
-  videoElement.autoplay = true;
+  videoElement.loop = true;
   videoElement.playsInline = true;
-  videoElement.setAttribute("playsinline", "");           // Very important for iOS
-  videoElement.style.display = "none";                    // Hide the video element
+  videoElement.setAttribute("playsinline", "");
+  videoElement.setAttribute("webkit-playsinline", "");
+  videoElement.style.display = "none";
 
-  // Force loading and attempt to play
   videoElement.load();
-  videoElement.play().catch(err => {
-    console.log("Autoplay was prevented:", err);
-  });
 
   const texture = new THREE.VideoTexture(videoElement);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
 
   const chromaKeyMaterial = new THREE.ShaderMaterial({
     uniforms: {
-      tVideo:     { value: texture },
-      keyColor:   { value: new THREE.Color(0x0000ff) },  
-      threshold:  { value: 0.18 },                       
-      smoothing:  { value: 0.12 }                        
+      tVideo: { value: texture },
+      keyColor: { value: new THREE.Color(0x0000ff) },
+      threshold: { value: 0.18 },
+      smoothing: { value: 0.12 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -232,14 +246,11 @@ function addVideoBanner() {
       uniform float threshold;
       uniform float smoothing;
       varying vec2 vUv;
-
       void main() {
         vec4 texel = texture2D(tVideo, vUv);
         vec3 color = texel.rgb;
-
         float dist = distance(color, keyColor);
         float alpha = smoothstep(threshold, threshold + smoothing, dist);
-
         gl_FragColor = vec4(color, texel.a * alpha);
       }
     `,
@@ -253,6 +264,12 @@ function addVideoBanner() {
   videoMesh.position.set(-360, 10, 25);
   videoMesh.rotation.y = THREE.MathUtils.degToRad(80);
   scene.add(videoMesh);
+
+  // Try to show first frame after metadata loads
+  videoElement.addEventListener('loadedmetadata', () => {
+    videoElement.currentTime = 0.1;
+    videoElement.pause();
+  }, { once: true });
 }
 
 function removeVideoBanner() {
@@ -334,7 +351,7 @@ function onPointerDown(e) {
 
 function onPointerMove(e) {
   if (!isDragging || isTransitioning) return;
-  yaw   -= e.movementX * 0.25;
+  yaw -= e.movementX * 0.25;
   pitch -= e.movementY * 0.25;
   pitch = Math.max(-85, Math.min(85, pitch));
 }
