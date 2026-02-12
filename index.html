@@ -200,7 +200,14 @@ function addVideoBanner() {
   videoElement.muted = true;
   videoElement.autoplay = true;
   videoElement.playsInline = true;
-  videoElement.play().catch(() => {});
+  videoElement.setAttribute("playsinline", "");           // Very important for iOS
+  videoElement.style.display = "none";                    // Hide the video element
+
+  // Force loading and attempt to play
+  videoElement.load();
+  videoElement.play().catch(err => {
+    console.log("Autoplay was prevented:", err);
+  });
 
   const texture = new THREE.VideoTexture(videoElement);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -243,7 +250,7 @@ function addVideoBanner() {
 
   const geometry = new THREE.PlaneGeometry(200, 335);
   videoMesh = new THREE.Mesh(geometry, chromaKeyMaterial);
-  videoMesh.position.set(-360, 10, 25)
+  videoMesh.position.set(-360, 10, 25);
   videoMesh.rotation.y = THREE.MathUtils.degToRad(80);
   scene.add(videoMesh);
 }
