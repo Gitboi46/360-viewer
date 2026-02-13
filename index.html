@@ -134,7 +134,6 @@ let videoMesh = null;
 let videoElement = null;
 let videoTexture = null;
 
-const overlay = document.getElementById("transitionOverlay");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const zoomInBtn = document.getElementById("zoomIn");
@@ -199,11 +198,16 @@ function loadPanorama(index) {
 function addVideoBanner() {
 
   videoElement = document.createElement("video");
-  videoElement.src = "SakshiIntro.mp4"; // ✅ LOCAL SAME-ORIGIN
+
+  // ✅ FULL GITHUB PAGES PATH
+  videoElement.src = "https://gitboi46.github.io/360-viewer/SakshiIntro.mp4";
+
   videoElement.loop = true;
   videoElement.muted = true;
   videoElement.playsInline = true;
   videoElement.setAttribute("playsinline", "");
+  videoElement.setAttribute("webkit-playsinline", "");
+  videoElement.crossOrigin = "anonymous";
 
   videoTexture = new THREE.VideoTexture(videoElement);
 
@@ -240,7 +244,6 @@ function move(forward) {
   const target = forward
     ? panoramas[currentIndex].forward
     : panoramas[currentIndex].backward;
-
   loadPanorama(target);
 }
 
