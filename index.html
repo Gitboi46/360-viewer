@@ -71,6 +71,7 @@ canvas { display: block; }
 </style>
 </head>
 <body>
+
 <div id="transitionOverlay"></div>
 <button id="prevBtn" class="nav-btn">← Back</button>
 <button id="nextBtn" class="nav-btn">Forward →</button>
@@ -80,6 +81,7 @@ canvas { display: block; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 <script>
+
 const panoramas = [
   {
     url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama3_Configuration1_BJP.jpg",
@@ -128,13 +130,9 @@ let scene, camera, renderer, sphere;
 let yaw = 0, pitch = 0;
 let currentIndex = 0;
 let isDragging = false;
-let isTransitioning = false;
 let videoMesh = null;
 let videoElement = null;
-let hasUserInteracted = false;
-
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
+let videoTexture = null;
 
 const overlay = document.getElementById("transitionOverlay");
 const prevBtn = document.getElementById("prevBtn");
@@ -160,33 +158,24 @@ function init() {
   renderer.setPixelRatio(devicePixelRatio);
   document.body.appendChild(renderer.domElement);
 
-  // One-time user gesture detection for iOS video playback
-  function onFirstInteraction() {
-    if (hasUserInteracted) return;
-    hasUserInteracted = true;
-    if (videoElement && videoElement.paused) {
-      videoElement.play().catch(e => {
-        console.warn("Play after gesture failed:", e);
-      });
-    }
-  }
-
-  renderer.domElement.addEventListener('touchstart', onFirstInteraction, { once: true, passive: true });
-  renderer.domElement.addEventListener('click', onFirstInteraction, { once: true });
-  renderer.domElement.addEventListener('pointerdown', onFirstInteraction, { once: true });
-
   loadPanorama(0);
 
-  renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  renderer.domElement.addEventListener("pointerdown", userGesture);
   renderer.domElement.addEventListener("pointermove", onPointerMove);
   renderer.domElement.addEventListener("pointerup", () => isDragging = false);
   renderer.domElement.addEventListener("wheel", e => zoom(e.deltaY * 0.02));
   window.addEventListener("resize", onResize);
 }
 
+function userGesture() {
+  if (videoElement && videoElement.paused) {
+    videoElement.play().catch(()=>{});
+  }
+  isDragging = true;
+}
+
 function loadPanorama(index) {
   new THREE.TextureLoader().load(panoramas[index].url, tex => {
-    tex.colorSpace = THREE.SRGBColorSpace;
 
     if (!sphere) {
       const geo = new THREE.SphereGeometry(500, 64, 48);
@@ -209,74 +198,44 @@ function loadPanorama(index) {
 }
 
 function addVideoBanner() {
+
   videoElement = document.createElement("video");
-  videoElement.crossOrigin = "anonymous";
   videoElement.src = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Sakshi%20Intro%20Blue%20Screen.mp4";
-  videoElement.muted = true;
+  videoElement.crossOrigin = "anonymous";
   videoElement.loop = true;
+  videoElement.muted = true;
+  videoElement.preload = "auto";
   videoElement.playsInline = true;
   videoElement.setAttribute("playsinline", "");
   videoElement.setAttribute("webkit-playsinline", "");
-  videoElement.style.display = "none";
 
-  videoElement.load();
+  videoElement.addEventListener("canplaythrough", () => {
 
-  const texture = new THREE.VideoTexture(videoElement);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
+    videoTexture = new THREE.VideoTexture(videoElement);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBAFormat;
 
-  const chromaKeyMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      tVideo: { value: texture },
-      keyColor: { value: new THREE.Color(0x0000ff) },
-      threshold: { value: 0.18 },
-      smoothing: { value: 0.12 }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tVideo;
-      uniform vec3 keyColor;
-      uniform float threshold;
-      uniform float smoothing;
-      varying vec2 vUv;
-      void main() {
-        vec4 texel = texture2D(tVideo, vUv);
-        vec3 color = texel.rgb;
-        float dist = distance(color, keyColor);
-        float alpha = smoothstep(threshold, threshold + smoothing, dist);
-        gl_FragColor = vec4(color, texel.a * alpha);
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false
+    const geometry = new THREE.PlaneGeometry(200, 335);
+    const material = new THREE.MeshBasicMaterial({
+      map: videoTexture,
+      side: THREE.DoubleSide
+    });
+
+    videoMesh = new THREE.Mesh(geometry, material);
+    videoMesh.position.set(-360, 10, 25);
+    videoMesh.rotation.y = THREE.MathUtils.degToRad(80);
+    scene.add(videoMesh);
+
+    videoElement.play().catch(()=>{});
   });
 
-  const geometry = new THREE.PlaneGeometry(200, 335);
-  videoMesh = new THREE.Mesh(geometry, chromaKeyMaterial);
-  videoMesh.position.set(-360, 10, 25);
-  videoMesh.rotation.y = THREE.MathUtils.degToRad(80);
-  scene.add(videoMesh);
-
-  // Try to show first frame after metadata loads
-  videoElement.addEventListener('loadedmetadata', () => {
-    videoElement.currentTime = 0.1;
-    videoElement.pause();
-  }, { once: true });
+  videoElement.load();
 }
 
 function removeVideoBanner() {
   if (!videoMesh) return;
   scene.remove(videoMesh);
-  videoMesh.geometry.dispose();
-  videoMesh.material.dispose();
   if (videoElement) videoElement.pause();
   videoMesh = null;
   videoElement = null;
@@ -285,72 +244,20 @@ function removeVideoBanner() {
 function toggleSound() {
   if (!videoElement) return;
   videoElement.muted = !videoElement.muted;
+  if (!videoElement.muted) videoElement.play().catch(()=>{});
   soundBtn.textContent = videoElement.muted ? "🔇 Sound Off" : "🔊 Sound On";
-  if (!videoElement.muted && videoElement.paused) {
-    videoElement.play().catch(() => {});
-  }
-}
-
-function togglePlayPause() {
-  if (!videoElement) return;
-  if (videoElement.paused) {
-    videoElement.play().catch(() => {});
-  } else {
-    videoElement.pause();
-  }
 }
 
 function move(forward) {
-  if (isTransitioning) return;
-  isTransitioning = true;
-
   const target = forward
     ? panoramas[currentIndex].forward
     : panoramas[currentIndex].backward;
 
-  const start = performance.now();
-  const duration = 1200;
-
-  function animateMove() {
-    const t = Math.min((performance.now() - start) / duration, 1);
-    const ease = 1 - Math.pow(1 - t, 3);
-
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    camera.position.copy(dir.multiplyScalar(ease * 160));
-
-    overlay.style.opacity = ease * 0.8;
-
-    if (t < 1) {
-      requestAnimationFrame(animateMove);
-    } else {
-      camera.position.set(0, 0, 0);
-      overlay.style.opacity = 0;
-      loadPanorama(target);
-      isTransitioning = false;
-    }
-  }
-
-  animateMove();
-}
-
-function onPointerDown(e) {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-
-  raycaster.setFromCamera(mouse, camera);
-
-  if (videoMesh) {
-    const hits = raycaster.intersectObject(videoMesh);
-    if (hits.length) {
-      togglePlayPause();
-      return;
-    }
-  }
-  isDragging = true;
+  loadPanorama(target);
 }
 
 function onPointerMove(e) {
-  if (!isDragging || isTransitioning) return;
+  if (!isDragging) return;
   yaw -= e.movementX * 0.25;
   pitch -= e.movementY * 0.25;
   pitch = Math.max(-85, Math.min(85, pitch));
@@ -372,6 +279,9 @@ function animate() {
   camera.rotation.order = "YXZ";
   camera.rotation.y = THREE.MathUtils.degToRad(yaw);
   camera.rotation.x = THREE.MathUtils.degToRad(pitch);
+
+  if (videoTexture) videoTexture.needsUpdate = true;
+
   renderer.render(scene, camera);
 }
 </script>
