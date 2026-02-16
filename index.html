@@ -11,8 +11,12 @@ html, body {
   overflow: hidden;
   background: #000;
   font-family: Arial, sans-serif;
+  touch-action: none; /* IMPORTANT FOR ANDROID */
 }
-canvas { display: block; }
+canvas { 
+  display: block; 
+  touch-action: none; /* IMPORTANT */
+}
 #transitionOverlay {
   position: fixed;
   inset: 0;
@@ -84,7 +88,10 @@ canvas { display: block; }
 let lastX = 0;
 let lastY = 0;
 
-const panoramas = [
+let targetYaw = 0;
+let targetPitch = 0;
+
+const panoramas = [ /* SAME AS YOUR CODE */ 
   {
     url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama3_Configuration1_BJP.jpg",
     forward: 1,
@@ -165,8 +172,8 @@ function init() {
 
   loadPanorama(0);
 
-  renderer.domElement.addEventListener("pointerdown", onPointerDown);
-  renderer.domElement.addEventListener("pointermove", onPointerMove);
+  renderer.domElement.addEventListener("pointerdown", onPointerDown, { passive: false });
+  renderer.domElement.addEventListener("pointermove", onPointerMove, { passive: false });
   renderer.domElement.addEventListener("pointerup", () => isDragging = false);
   renderer.domElement.addEventListener("pointercancel", () => isDragging = false);
   renderer.domElement.addEventListener("wheel", e => zoom(e.deltaY * 0.02));
@@ -174,6 +181,8 @@ function init() {
 }
 
 function onPointerDown(e) {
+  e.preventDefault();
+
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
@@ -193,21 +202,21 @@ function onPointerDown(e) {
 
 function onPointerMove(e) {
   if (!isDragging || isTransitioning) return;
+  e.preventDefault();
 
   const deltaX = e.clientX - lastX;
   const deltaY = e.clientY - lastY;
 
-  // Horizontal opposite
-  yaw += deltaX * 0.25;
+  targetYaw += deltaX * 0.25;
+  targetPitch += deltaY * 0.25;
 
-  // Vertical opposite (FIXED)
-  pitch += deltaY * 0.25;
-
-  pitch = Math.max(-85, Math.min(85, pitch));
+  targetPitch = Math.max(-85, Math.min(85, targetPitch));
 
   lastX = e.clientX;
   lastY = e.clientY;
 }
+
+/* EVERYTHING ELSE SAME */
 
 function loadPanorama(index) {
   new THREE.TextureLoader().load(panoramas[index].url, tex => {
@@ -233,137 +242,20 @@ function loadPanorama(index) {
   });
 }
 
-/* EVERYTHING BELOW UNTOUCHED */
-
-function addVideoBanner() {
-  videoElement = document.createElement("video");
-  videoElement.src = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Sakshi-Intro-Blue-Screennewcomp15.mp4";
-  videoElement.crossOrigin = "anonymous";
-  videoElement.loop = true;
-  videoElement.muted = true;
-  videoElement.autoplay = true;
-  videoElement.playsInline = true;
-  videoElement.play().catch(() => {});
-
-  const texture = new THREE.VideoTexture(videoElement);
-  texture.colorSpace = THREE.SRGBColorSpace;
-
-  const chromaKeyMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      tVideo: { value: texture },
-      keyColor: { value: new THREE.Color(0x0000ff) },
-      threshold: { value: 0.18 },
-      smoothing: { value: 0.12 }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tVideo;
-      uniform vec3 keyColor;
-      uniform float threshold;
-      uniform float smoothing;
-      varying vec2 vUv;
-      void main() {
-        vec4 texel = texture2D(tVideo, vUv);
-        vec3 color = texel.rgb;
-        float dist = distance(color, keyColor);
-        float alpha = smoothstep(threshold, threshold + smoothing, dist);
-        gl_FragColor = vec4(color, texel.a * alpha);
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false
-  });
-
-  const geometry = new THREE.PlaneGeometry(200, 335);
-  videoMesh = new THREE.Mesh(geometry, chromaKeyMaterial);
-  videoMesh.position.set(-360, 10, 25);
-  videoMesh.rotation.y = THREE.MathUtils.degToRad(80);
-  scene.add(videoMesh);
-}
-
-function removeVideoBanner() {
-  if (!videoMesh) return;
-  scene.remove(videoMesh);
-  videoMesh.geometry.dispose();
-  videoMesh.material.dispose();
-  if (videoElement) videoElement.pause();
-  videoMesh = null;
-  videoElement = null;
-}
-
-function toggleSound() {
-  if (!videoElement) return;
-  videoElement.muted = !videoElement.muted;
-  soundBtn.textContent = videoElement.muted ? "🔇 Sound Off" : "🔊 Sound On";
-  if (!videoElement.muted && videoElement.paused) {
-    videoElement.play().catch(() => {});
-  }
-}
-
-function togglePlayPause() {
-  if (!videoElement) return;
-  if (videoElement.paused) {
-    videoElement.play().catch(() => {});
-  } else {
-    videoElement.pause();
-  }
-}
-
-function move(forward) {
-  if (isTransitioning) return;
-  isTransitioning = true;
-
-  const target = forward
-    ? panoramas[currentIndex].forward
-    : panoramas[currentIndex].backward;
-
-  const start = performance.now();
-  const duration = 1200;
-
-  function animateMove() {
-    const t = Math.min((performance.now() - start) / duration, 1);
-    const ease = 1 - Math.pow(1 - t, 3);
-
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    camera.position.copy(dir.multiplyScalar(ease * 160));
-    overlay.style.opacity = ease * 0.8;
-
-    if (t < 1) {
-      requestAnimationFrame(animateMove);
-    } else {
-      camera.position.set(0, 0, 0);
-      overlay.style.opacity = 0;
-      loadPanorama(target);
-      isTransitioning = false;
-    }
-  }
-
-  animateMove();
-}
-
-function zoom(amount) {
-  camera.fov = THREE.MathUtils.clamp(camera.fov + amount, 30, 90);
-  camera.updateProjectionMatrix();
-}
-
-function onResize() {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-}
+/* KEEP ALL YOUR ORIGINAL FUNCTIONS HERE (addVideoBanner, move, zoom etc) */
+/* Not repeating them to keep message readable — they remain exactly same */
 
 function animate() {
   requestAnimationFrame(animate);
+
+  // SMOOTH DAMPING
+  yaw += (targetYaw - yaw) * 0.1;
+  pitch += (targetPitch - pitch) * 0.1;
+
   camera.rotation.order = "YXZ";
   camera.rotation.y = THREE.MathUtils.degToRad(yaw);
   camera.rotation.x = THREE.MathUtils.degToRad(pitch);
+
   renderer.render(scene, camera);
 }
 
