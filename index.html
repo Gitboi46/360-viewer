@@ -197,9 +197,11 @@ function onPointerMove(e) {
   const deltaX = e.clientX - lastX;
   const deltaY = e.clientY - lastY;
 
-  // FIXED SWIPE DIRECTION
+  // Horizontal opposite
   yaw += deltaX * 0.25;
-  pitch -= deltaY * 0.25;
+
+  // Vertical opposite (FIXED)
+  pitch += deltaY * 0.25;
 
   pitch = Math.max(-85, Math.min(85, pitch));
 
@@ -231,7 +233,7 @@ function loadPanorama(index) {
   });
 }
 
-/* ---- EVERYTHING BELOW IS UNTOUCHED ---- */
+/* EVERYTHING BELOW UNTOUCHED */
 
 function addVideoBanner() {
   videoElement = document.createElement("video");
@@ -266,7 +268,6 @@ function addVideoBanner() {
       uniform float threshold;
       uniform float smoothing;
       varying vec2 vUv;
-
       void main() {
         vec4 texel = texture2D(tVideo, vUv);
         vec3 color = texel.rgb;
