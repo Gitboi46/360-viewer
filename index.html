@@ -255,7 +255,12 @@ function loadPanorama(index) {
     }
 
     removeVideoBanner();
-    if (panoramas[index].hasVideo) addVideoBanner();
+    if (panoramas[index].hasVideo) {
+      addVideoBanner();
+      soundBtn.style.display = 'block';
+    } else {
+      soundBtn.style.display = 'none';
+    }
 
     currentIndex = index;
   });
