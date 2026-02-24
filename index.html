@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>360° Street View with Video Banner</title>
+<title>4.2 office 360° Street View </title>
 <style>
 html, body {
   margin: 0;
@@ -68,7 +68,7 @@ canvas { display: block; }
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 .zoom-btn:active {
   transform: scale(0.92);
@@ -100,6 +100,30 @@ canvas { display: block; }
   transform: scale(0.96);
   background: rgba(255, 255, 255, 0.18);
 }
+#bgMusicBtn {
+  position: fixed;
+  top: 28px;
+  left: 28px;
+  padding: 14px 22px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  z-index: 20;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+#bgMusicBtn:active {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.18);
+}
 </style>
 </head>
 <body>
@@ -109,6 +133,7 @@ canvas { display: block; }
 <button id="zoomIn" class="zoom-btn">+</button>
 <button id="zoomOut" class="zoom-btn">−</button>
 <button id="soundBtn">🔇Mute</button>
+<button id="bgMusicBtn">🎵 Music</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 <script>
@@ -118,37 +143,49 @@ let lastY = 0;
 
 const panoramas = [
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama3_Configuration1_BJP.jpg",
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/1.jpg",
     forward: 1,
-    backward: 5,
+    backward: 7,
     hasVideo: true
   },
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama4.png",
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/2.jpg",
     forward: 2,
     backward: 0
   },
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama6.png",
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/3.jpg",
     forward: 3,
     backward: 1
   },
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama1.png",
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/4.jpg",
     forward: 4,
     backward: 2
   },
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama7.png",
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/5.jpg",
     forward: 5,
     backward: 3
   },
   {
-    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Panorama9.png",
-    forward: 0,
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/6.jpg",
+    forward: 6,
     backward: 4
+  },
+  {
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/7.jpg",
+    forward: 7,
+    backward: 5
+  },
+  {
+    url: "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/8.jpg",
+    forward: 0,
+    backward: 6
   }
 ];
+
+const BG_MUSIC_URL = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/dubdown-light-132952.mp3";
 
 let scene, camera, renderer, sphere;
 let yaw = 0, pitch = 0;
@@ -157,6 +194,23 @@ let isDragging = false;
 let isTransitioning = false;
 let videoMesh = null;
 let videoElement = null;
+
+// Background music audio element
+let bgMusic = null;
+let bgMusicPlaying = false;
+
+// Texture cache
+const textureCache = new Array(panoramas.length).fill(null);
+const loader = new THREE.TextureLoader();
+
+function preloadAll() {
+  panoramas.forEach((pano, i) => {
+    loader.load(pano.url, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      textureCache[i] = tex;
+    });
+  });
+}
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -167,15 +221,42 @@ const nextBtn = document.getElementById("nextBtn");
 const zoomInBtn = document.getElementById("zoomIn");
 const zoomOutBtn = document.getElementById("zoomOut");
 const soundBtn = document.getElementById("soundBtn");
+const bgMusicBtn = document.getElementById("bgMusicBtn");
 
 init();
 animate();
+initBgMusic();
 
 prevBtn.onclick = () => move(false);
 nextBtn.onclick = () => move(true);
 zoomInBtn.onclick = () => zoom(-5);
 zoomOutBtn.onclick = () => zoom(5);
 soundBtn.onclick = toggleSound;
+bgMusicBtn.onclick = toggleBgMusic;
+
+function initBgMusic() {
+  if (!BG_MUSIC_URL) {
+    bgMusicBtn.style.opacity = "0.4";
+    bgMusicBtn.title = "No music URL set — add BG_MUSIC_URL in the code";
+    return;
+  }
+  bgMusic = new Audio(BG_MUSIC_URL);
+  bgMusic.loop = true;
+  bgMusic.volume = 0.5;
+}
+
+function toggleBgMusic() {
+  if (!bgMusic) return;
+  if (bgMusicPlaying) {
+    bgMusic.pause();
+    bgMusicPlaying = false;
+    bgMusicBtn.textContent = "🎵 Music";
+  } else {
+    bgMusic.play().catch(() => {});
+    bgMusicPlaying = true;
+    bgMusicBtn.textContent = "🔇 Music Off";
+  }
+}
 
 function init() {
   scene = new THREE.Scene();
@@ -185,6 +266,7 @@ function init() {
   renderer.setPixelRatio(devicePixelRatio);
   document.body.appendChild(renderer.domElement);
 
+  preloadAll();
   loadPanorama(0);
 
   renderer.domElement.addEventListener("pointerdown", onPointerDown, { passive: true });
@@ -219,7 +301,6 @@ function onPointerMove(e) {
   const deltaX = e.clientX - lastX;
   const deltaY = e.clientY - lastY;
 
-  // Increased sensitivity for smoother movement on mobile
   yaw += deltaX * 0.35;
   pitch += deltaY * 0.35;
 
@@ -237,32 +318,37 @@ function onPointerCancel() {
   isDragging = false;
 }
 
+function applyPanorama(index, tex) {
+  if (!sphere) {
+    const geo = new THREE.SphereGeometry(500, 64, 48);
+    geo.scale(-1, 1, 1);
+    sphere = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+    scene.add(sphere);
+  } else {
+    sphere.material.map = tex;
+    sphere.material.needsUpdate = true;
+  }
+
+  removeVideoBanner();
+  if (panoramas[index].hasVideo) {
+    addVideoBanner();
+    soundBtn.style.display = 'block';
+  } else {
+    soundBtn.style.display = 'none';
+  }
+
+  currentIndex = index;
+}
+
 function loadPanorama(index) {
-  new THREE.TextureLoader().load(panoramas[index].url, tex => {
+  if (textureCache[index]) {
+    applyPanorama(index, textureCache[index]);
+    return;
+  }
+  loader.load(panoramas[index].url, tex => {
     tex.colorSpace = THREE.SRGBColorSpace;
-
-    if (!sphere) {
-      const geo = new THREE.SphereGeometry(500, 64, 48);
-      geo.scale(-1, 1, 1);
-      sphere = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({ map: tex })
-      );
-      scene.add(sphere);
-    } else {
-      sphere.material.map = tex;
-      sphere.material.needsUpdate = true;
-    }
-
-    removeVideoBanner();
-    if (panoramas[index].hasVideo) {
-      addVideoBanner();
-      soundBtn.style.display = 'block';
-    } else {
-      soundBtn.style.display = 'none';
-    }
-
-    currentIndex = index;
+    textureCache[index] = tex;
+    applyPanorama(index, tex);
   });
 }
 
@@ -270,7 +356,7 @@ function loadPanorama(index) {
 
 function addVideoBanner() {
   videoElement = document.createElement("video");
-  videoElement.src = "https://raw.githubusercontent.com/Gitboi46/360-viewer/main/Sakshi-Intro-Blue-Screennewcomp15.mp4";
+  videoElement.src = "";
   videoElement.crossOrigin = "anonymous";
   videoElement.loop = true;
   videoElement.muted = true;
@@ -357,6 +443,9 @@ function move(forward) {
     ? panoramas[currentIndex].forward
     : panoramas[currentIndex].backward;
 
+
+  loadPanorama(target);
+
   const start = performance.now();
   const duration = 1200;
 
@@ -373,7 +462,6 @@ function move(forward) {
     } else {
       camera.position.set(0, 0, 0);
       overlay.style.opacity = 0;
-      loadPanorama(target);
       isTransitioning = false;
     }
   }
